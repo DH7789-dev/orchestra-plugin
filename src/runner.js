@@ -41,9 +41,10 @@ async function runOrchestration(opts) {
   const tracker = createTracker();
   const log     = (msg) => emit("log", { msg });
 
-  // ── Load custom config ──────────────────────────────
+  // ── Phase 1 (early): Load custom config ─────────────
   const configFile = path.join(workspaceRoot, config.get("configFile", ".orchestra/config.json"));
-  loadCustomAgents(configFile, fs, path);
+  const customConfig = loadCustomAgents(configFile, fs, path);
+  const perAgentModels = customConfig.agentModels || {};
 
   // ── Determine settings ──────────────────────────────
   const orchModel   = config.get("orchestratorModel", "claude-sonnet-4-6");
@@ -74,6 +75,9 @@ async function runOrchestration(opts) {
   log(`${"═".repeat(62)}`);
   log(`📋  Feature  : ${featureRequest}`);
   log(`🤖  Models   : orch=${orchModel} | agent=${agentModel} | review=${reviewModel}`);
+  if (Object.keys(perAgentModels).length > 0) {
+    log(`📌  Per-agent : ${Object.entries(perAgentModels).map(([k, v]) => `${k}=${v}`).join(' | ')}`);
+  }
   log(`🔒  Checkpoint: ${doCheckpoint ? "enabled" : "disabled"}`);
   log(`👁   Plan gate : ${doPlanGate ? "enabled" : "disabled"}`);
   log(`🔬  Quality   : ${doGates ? "enabled" : "disabled"}`);
@@ -91,8 +95,10 @@ async function runOrchestration(opts) {
     emit("phase", { phase: "setup", msg: "Setting up agents..." });
     const agentDefs = {};
     for (const [name, desc] of Object.entries(AGENT_DESCRIPTIONS)) {
+      const model = perAgentModels[name]
+        || (name === "manager" ? reviewModel : agentModel);
       agentDefs[name] = {
-        model: { id: name === "manager" ? reviewModel : agentModel },
+        model: { id: model },
         description: desc,
       };
     }
@@ -145,13 +151,32 @@ Output ONLY the JSON plan first. Do not begin executing. Wait.`;
       let planText = "";
 
       for await (const event of planRun.stream()) {
-        if (event.type === "assistant") {
-          for (const block of event.message?.content ?? []) {
-            if (block.type === "text") planText += block.text;
+        switch (event.type) {
+          case "assistant":
+            for (const block of event.message?.content ?? []) {
+              if (block.type === "text") planText += block.text;
+            }
+            break;
+          case "usage":
+          case "message_start": {
+            const usage = event.usage || event.message?.usage || {};
+            const inp = usage.input_tokens ?? usage.inputTokens ?? 0;
+            const out = usage.output_tokens ?? usage.outputTokens ?? 0;
+            if (inp || out) tracker.recordTokens("orchestrator", inp, out);
+            break;
+          }
+          case "message_delta": {
+            const usage = event.usage || {};
+            const out = usage.output_tokens ?? usage.outputTokens ?? 0;
+            if (out) tracker.recordTokens("orchestrator", 0, out);
+            break;
           }
         }
       }
-      await planRun.wait();
+      const planResult = await planRun.wait();
+      if (planResult?.usage) {
+        tracker.recordTokens("orchestrator", planResult.usage.input_tokens ?? 0, planResult.usage.output_tokens ?? 0);
+      }
 
       // Parse the plan
       let parsedPlan = null;
@@ -228,10 +253,11 @@ Track carefully:
           const agentName = input.agent ?? input.name;
 
           if (agentName && agentName !== activeAgent) {
-            activeAgent = agentName;
+            const previousAgent = activeAgent;
             const meta = AGENT_META[agentName] ?? { emoji: "🤖", name: agentName };
-            tracker.finishAgent(activeAgent);
-            tracker.startAgent(agentName, agentName === "manager" ? reviewModel : agentModel);
+            tracker.finishAgent(previousAgent);
+            tracker.startAgent(agentName, perAgentModels[agentName] || (agentName === "manager" ? reviewModel : agentModel));
+            activeAgent = agentName;
 
             log(`\n${"─".repeat(50)}`);
             log(`${meta.emoji}  Delegating to ${meta.name} agent...`);
@@ -257,10 +283,29 @@ Track carefully:
           }
           break;
         }
+
+        case "usage":
+        case "message_start": {
+          const usage = event.usage || event.message?.usage || {};
+          const inp = usage.input_tokens ?? usage.inputTokens ?? 0;
+          const out = usage.output_tokens ?? usage.outputTokens ?? 0;
+          if (inp || out) tracker.recordTokens(activeAgent, inp, out);
+          break;
+        }
+
+        case "message_delta": {
+          const usage = event.usage || {};
+          const out = usage.output_tokens ?? usage.outputTokens ?? 0;
+          if (out) tracker.recordTokens(activeAgent, 0, out);
+          break;
+        }
       }
     }
 
     const execResult = await execRun.wait();
+    if (execResult?.usage) {
+      tracker.recordTokens("orchestrator", execResult.usage.input_tokens ?? 0, execResult.usage.output_tokens ?? 0);
+    }
     tracker.finishAgent("orchestrator");
 
     // ── Phase 5: Quality gates ──────────────────────────

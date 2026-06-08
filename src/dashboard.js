@@ -100,6 +100,29 @@ class DashboardProvider {
   .log-box{background:var(--vscode-editor-background,var(--vscode-input-background));border:1px solid var(--vscode-panel-border);border-radius:4px;padding:6px 8px;max-height:180px;overflow-y:auto;font-size:10px;font-family:var(--vscode-editor-font-family,monospace);margin-bottom:8px;white-space:pre-wrap;word-break:break-word}
   .empty-state{text-align:center;padding:32px 16px;color:var(--vscode-descriptionForeground);font-size:11px}
   .section-label{font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--vscode-descriptionForeground);margin-bottom:5px}
+
+  /* Config tab */
+  .config-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .config-label{flex:1;font-size:11px;color:var(--vscode-foreground)}
+  .config-select{background:var(--vscode-input-background);border:1px solid var(--vscode-input-border,var(--vscode-panel-border));color:var(--vscode-input-foreground);padding:3px 6px;border-radius:3px;font-size:11px;cursor:pointer}
+  .config-input{background:var(--vscode-input-background);border:1px solid var(--vscode-input-border,var(--vscode-panel-border));color:var(--vscode-input-foreground);padding:4px 6px;border-radius:3px;font-size:11px;width:100%;margin-bottom:4px}
+  .config-textarea{background:var(--vscode-input-background);border:1px solid var(--vscode-input-border,var(--vscode-panel-border));color:var(--vscode-input-foreground);padding:4px 6px;border-radius:3px;font-size:11px;width:100%;resize:vertical;margin-bottom:4px;font-family:inherit}
+  .add-agent-form{display:flex;flex-direction:column;gap:0}
+  .toggle-row{display:flex;align-items:center;gap:8px;margin-bottom:5px;cursor:pointer}
+  .toggle-label{flex:1;font-size:11px}
+  .toggle-btn{width:32px;height:17px;border-radius:9px;border:none;cursor:pointer;position:relative;transition:background .15s;flex-shrink:0}
+  .toggle-btn.on{background:var(--vscode-button-background)}
+  .toggle-btn.off{background:var(--vscode-panel-border)}
+  .toggle-btn::after{content:'';position:absolute;width:13px;height:13px;border-radius:50%;background:#fff;top:2px;transition:left .15s}
+  .toggle-btn.on::after{left:17px}
+  .toggle-btn.off::after{left:2px}
+  .agent-entry{display:flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid var(--vscode-panel-border);border-radius:4px;margin-bottom:4px;font-size:11px}
+  .agent-entry-info{flex:1}
+  .agent-entry-name{font-weight:600}
+  .agent-entry-desc{color:var(--vscode-descriptionForeground);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px}
+  .btn-xs{padding:2px 7px;font-size:10px;border:none;border-radius:3px;cursor:pointer}
+  .btn-edit{background:rgba(96,165,250,.12);color:#60a5fa}
+  .btn-delete{background:rgba(248,113,113,.12);color:#f87171}
 </style>
 </head>
 <body>
@@ -108,6 +131,7 @@ class DashboardProvider {
   <div class="tab active" data-page="run">Run</div>
   <div class="tab" data-page="status">Status</div>
   <div class="tab" data-page="history">History</div>
+  <div class="tab" data-page="config">Config</div>
 </div>
 
 <!-- RUN PAGE -->
@@ -157,6 +181,65 @@ class DashboardProvider {
   </div>
 </div>
 
+<!-- CONFIG PAGE -->
+<div class="page" id="page-config">
+  <div class="section-label">Global Models</div>
+  <div class="config-row">
+    <span class="config-label">Orchestrator</span>
+    <select class="config-select" id="select-orchestratorModel" onchange="updateModel('orchestratorModel', this.value)">
+      <option value="claude-sonnet-4-6">claude-sonnet-4-6</option>
+      <option value="claude-opus-4-7">claude-opus-4-7</option>
+      <option value="composer-2">composer-2</option>
+      <option value="gpt-5.5">gpt-5.5</option>
+    </select>
+  </div>
+  <div class="config-row">
+    <span class="config-label">Agent (backend/front/test)</span>
+    <select class="config-select" id="select-agentModel" onchange="updateModel('agentModel', this.value)">
+      <option value="claude-sonnet-4-6">claude-sonnet-4-6</option>
+      <option value="claude-opus-4-7">claude-opus-4-7</option>
+      <option value="composer-2">composer-2</option>
+      <option value="gpt-5.5">gpt-5.5</option>
+    </select>
+  </div>
+  <div class="config-row">
+    <span class="config-label">Manager (review)</span>
+    <select class="config-select" id="select-reviewModel" onchange="updateModel('reviewModel', this.value)">
+      <option value="claude-sonnet-4-6">claude-sonnet-4-6</option>
+      <option value="claude-opus-4-7">claude-opus-4-7</option>
+      <option value="composer-2">composer-2</option>
+      <option value="gpt-5.5">gpt-5.5</option>
+    </select>
+  </div>
+
+  <div class="section-label" style="margin-top:12px">Per-Agent Model Overrides</div>
+  <div id="per-agent-models"></div>
+
+  <div class="section-label" style="margin-top:12px">Custom Agents</div>
+  <div id="custom-agents-list"></div>
+
+  <div class="section-label" style="margin-top:12px">Add / Edit Agent</div>
+  <div class="add-agent-form">
+    <input id="agent-name" placeholder="agent-id (e.g. devops)" class="config-input" />
+    <input id="agent-displayname" placeholder="Display Name (e.g. DevOps)" class="config-input" />
+    <div style="display:flex;gap:4px;margin-bottom:4px">
+      <input id="agent-emoji" placeholder="Emoji" class="config-input" style="width:64px;margin-bottom:0" />
+      <input id="agent-color" type="color" class="config-input" value="#888888" style="width:44px;padding:2px;margin-bottom:0;flex-shrink:0" />
+      <select id="agent-model" class="config-select" style="flex:1">
+        <option value="claude-sonnet-4-6">claude-sonnet-4-6</option>
+        <option value="claude-opus-4-7">claude-opus-4-7</option>
+        <option value="composer-2">composer-2</option>
+        <option value="gpt-5.5">gpt-5.5</option>
+      </select>
+    </div>
+    <textarea id="agent-description" placeholder="Agent instructions/description…" class="config-textarea" rows="3"></textarea>
+    <button class="btn btn-primary" onclick="saveAgent()">Save Agent</button>
+  </div>
+
+  <div class="section-label" style="margin-top:12px">Settings</div>
+  <div id="settings-toggles"></div>
+</div>
+
 <script>
 const vsc = acquireVsCodeApi();
 function post(cmd, data) { vsc.postMessage({ command: cmd, ...data }); }
@@ -168,6 +251,7 @@ document.querySelectorAll('.tab').forEach(t => {
     t.classList.add('active');
     document.getElementById('page-'+t.dataset.page).classList.add('active');
     if (t.dataset.page === 'history') post('load_history');
+    if (t.dataset.page === 'config') post('get_config');
   });
 });
 
@@ -184,7 +268,7 @@ function rollback() { post('rollback'); }
 const logBox = document.getElementById('log-box');
 let logText = '';
 function appendLog(msg) {
-  logText += msg + '\n';
+  logText += msg;
   logBox.textContent = logText;
   logBox.scrollTop = logBox.scrollHeight;
 }
@@ -226,7 +310,7 @@ window.addEventListener('message', ({ data: msg }) => {
   if (p === 'log')            appendLog(msg.msg);
   if (p === 'run_started') {
     clearLog();
-    Object.assign(agentStates, {});
+    Object.keys(agentStates).forEach(k => delete agentStates[k]);
     document.getElementById('cost-rows').innerHTML = '';
     document.getElementById('gate-chips').innerHTML = '';
     document.getElementById('agents-section').style.display = 'block';
@@ -326,6 +410,10 @@ window.addEventListener('message', ({ data: msg }) => {
     setBanner('status-banner', '⏹ Cancelled', 'warn');
   }
 
+  if (p === 'config') {
+    renderConfig(msg);
+  }
+
   if (p === 'history') {
     const list = document.getElementById('run-list');
     list.innerHTML = '';
@@ -356,6 +444,136 @@ window.addEventListener('message', ({ data: msg }) => {
   }
 });
 
+// ── Config ─────────────────────────────────────────────
+const MODELS = ["claude-sonnet-4-6", "claude-opus-4-7", "composer-2", "gpt-5.5"];
+const BUILTIN_AGENTS = {
+  backend:  { emoji: "⚙️",  name: "Backend",  color: "#2dd4bf" },
+  frontend: { emoji: "🎨",  name: "Frontend", color: "#f87171" },
+  test:     { emoji: "🧪",  name: "Test",     color: "#60a5fa" },
+  manager:  { emoji: "📋",  name: "Manager",  color: "#fbbf24" },
+};
+
+let currentConfig = null;
+
+function updateModel(setting, model, agentName) {
+  if (setting) {
+    post('update_model', { setting, model });
+  } else {
+    post('update_model', { agentName, model });
+  }
+}
+
+function saveAgent() {
+  const name = document.getElementById('agent-name').value.trim().toLowerCase().replace(/\\s+/g, '-');
+  if (!name) return;
+  post('save_agent', {
+    name,
+    displayName: document.getElementById('agent-displayname').value.trim() || name,
+    emoji:       document.getElementById('agent-emoji').value.trim() || '🤖',
+    color:       document.getElementById('agent-color').value,
+    model:       document.getElementById('agent-model').value,
+    description: document.getElementById('agent-description').value.trim(),
+  });
+  ['agent-name','agent-displayname','agent-emoji','agent-description'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+}
+
+function deleteAgent(name) {
+  if (!confirm('Delete agent "' + name + '"?')) return;
+  post('delete_agent', { name });
+}
+
+function editAgent(name) {
+  const agent = currentConfig?.customAgents?.[name];
+  if (!agent) return;
+  document.getElementById('agent-name').value        = name;
+  document.getElementById('agent-displayname').value = agent.name || name;
+  document.getElementById('agent-emoji').value       = agent.emoji || '🤖';
+  document.getElementById('agent-color').value       = agent.color || '#888888';
+  document.getElementById('agent-description').value = agent.description || '';
+  if (agent.model) document.getElementById('agent-model').value = agent.model;
+  document.getElementById('agent-name').focus();
+}
+
+function toggleCfg(setting, currentValue) {
+  post('update_model', { setting, model: !currentValue });
+  post('get_config');
+}
+
+function renderConfig(cfg) {
+  currentConfig = cfg;
+
+  ['orchestratorModel', 'agentModel', 'reviewModel'].forEach(s => {
+    const el = document.getElementById('select-' + s);
+    if (el && cfg[s]) el.value = cfg[s];
+  });
+
+  // Per-agent model overrides
+  const perAgentDiv = document.getElementById('per-agent-models');
+  perAgentDiv.innerHTML = '';
+  const allAgents = { ...BUILTIN_AGENTS };
+  for (const [n, a] of Object.entries(cfg.customAgents || {})) {
+    allAgents[n] = { emoji: a.emoji || '🤖', name: a.name || n, color: a.color || '#888' };
+  }
+  for (const [name, meta] of Object.entries(allAgents)) {
+    const currentModel = cfg.perAgentModels?.[name] || '';
+    const row = document.createElement('div');
+    row.className = 'config-row';
+    const opts = '<option value="">— global default —</option>' +
+      MODELS.map(m => '<option value="' + m + '"' + (currentModel === m ? ' selected' : '') + '>' + m + '</option>').join('');
+    row.innerHTML =
+      '<span class="config-label">' + escHtml((meta.emoji || '') + ' ' + (meta.name || name)) + '</span>' +
+      '<select class="config-select" onchange="updateModel(null,this.value,' + escAttrArg(name) + ')">' + opts + '</select>';
+    perAgentDiv.appendChild(row);
+  }
+
+  // Custom agents list
+  const customList = document.getElementById('custom-agents-list');
+  customList.innerHTML = '';
+  const entries = Object.entries(cfg.customAgents || {});
+  if (!entries.length) {
+    customList.innerHTML = '<div style="color:var(--vscode-descriptionForeground);font-size:11px;padding:4px 0">No custom agents yet.</div>';
+  } else {
+    for (const [name, agent] of entries) {
+      const el = document.createElement('div');
+      el.className = 'agent-entry';
+      el.innerHTML =
+        '<span>' + escHtml(agent.emoji || '🤖') + '</span>' +
+        '<div class="agent-entry-info">' +
+          '<div class="agent-entry-name">' + escHtml(agent.name || name) + '</div>' +
+          '<div class="agent-entry-desc">' + escHtml(agent.description || '') + '</div>' +
+        '</div>' +
+        '<button class="btn btn-xs btn-edit" onclick="editAgent(' + escAttrArg(name) + ')">Edit</button>' +
+        '<button class="btn btn-xs btn-delete" onclick="deleteAgent(' + escAttrArg(name) + ')">Del</button>';
+      customList.appendChild(el);
+    }
+  }
+
+  // Settings toggles
+  const togglesDiv = document.getElementById('settings-toggles');
+  togglesDiv.innerHTML = '';
+  const settings = [
+    { key: 'autoCheckpoint',      label: 'Git checkpoint before run' },
+    { key: 'requirePlanApproval', label: 'Require plan approval' },
+    { key: 'runQualityGates',     label: 'Run quality gates (test/lint)' },
+  ];
+  for (const s of settings) {
+    const val = cfg[s.key] ?? true;
+    const row = document.createElement('div');
+    row.className = 'toggle-row';
+    const btn = document.createElement('button');
+    btn.className = 'toggle-btn ' + (val ? 'on' : 'off');
+    btn.setAttribute('onclick', 'toggleCfg(\'' + s.key + '\',' + val + ')');
+    const label = document.createElement('span');
+    label.className = 'toggle-label';
+    label.textContent = s.label;
+    row.appendChild(label);
+    row.appendChild(btn);
+    togglesDiv.appendChild(row);
+  }
+}
+
 function timeSince(iso) {
   if (!iso) return '—';
   const sec = Math.floor((Date.now() - new Date(iso)) / 1000);
@@ -365,7 +583,13 @@ function timeSince(iso) {
   return Math.floor(sec/86400) + 'd ago';
 }
 function escHtml(s) {
-  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+// Safe encoding of a string for use as a JS-string argument inside an HTML attribute.
+// Uses JSON.stringify (which escapes JS metacharacters) then HTML-encodes for attribute context.
+function escAttrArg(s) {
+  return JSON.stringify(String(s==null?'':s))
+    .replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;');
 }
 </script>
 </body>

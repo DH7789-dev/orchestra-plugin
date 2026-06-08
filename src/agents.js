@@ -41,28 +41,55 @@ const AGENT_DESCRIPTIONS = {
     "Assign an overall quality score (A/B/C/D) with justification.",
 };
 
+// Snapshot the original built-in agents so we can reset module-level state
+// on every load — otherwise customizations or removed custom agents would
+// leak across runs in a long-lived VS Code session.
+const ORIGINAL_DESCRIPTIONS = Object.freeze({ ...AGENT_DESCRIPTIONS });
+const ORIGINAL_META = Object.freeze(JSON.parse(JSON.stringify(AGENT_META)));
+const RESERVED_KEYS = new Set(["__proto__", "prototype", "constructor"]);
+
 /** Load custom agent config from project file */
 function loadCustomAgents(configPath, fs, path) {
+  const result = { agentModels: {} };
+
+  // Reset to originals so previously-loaded customizations don't persist
+  for (const k of Object.keys(AGENT_DESCRIPTIONS)) delete AGENT_DESCRIPTIONS[k];
+  for (const k of Object.keys(AGENT_META)) delete AGENT_META[k];
+  Object.assign(AGENT_DESCRIPTIONS, ORIGINAL_DESCRIPTIONS);
+  for (const [k, v] of Object.entries(ORIGINAL_META)) AGENT_META[k] = { ...v };
+
   try {
     if (fs.existsSync(configPath)) {
       const raw = fs.readFileSync(configPath, "utf-8");
       const cfg = JSON.parse(raw);
-      if (cfg.agents) {
+      if (cfg.agents && typeof cfg.agents === "object") {
         for (const [name, def] of Object.entries(cfg.agents)) {
-          if (def.description) AGENT_DESCRIPTIONS[name] = def.description;
-          if (def.emoji || def.color) {
+          if (RESERVED_KEYS.has(name) || !def || typeof def !== "object") continue;
+          if (typeof def.description === "string" && def.description) {
+            AGENT_DESCRIPTIONS[name] = def.description;
+          }
+          if (def.emoji || def.color || def.name) {
             AGENT_META[name] = {
-              emoji: def.emoji || "🤖",
-              name: def.name || name,
-              color: def.color || "#888",
+              emoji: typeof def.emoji === "string" ? def.emoji : "🤖",
+              name:  typeof def.name  === "string" && def.name ? def.name : name,
+              color: typeof def.color === "string" ? def.color : "#888",
             };
           }
+          if (typeof def.model === "string" && def.model) result.agentModels[name] = def.model;
+        }
+      }
+      // Support top-level agentModels section too
+      if (cfg.agentModels && typeof cfg.agentModels === "object") {
+        for (const [name, model] of Object.entries(cfg.agentModels)) {
+          if (RESERVED_KEYS.has(name) || typeof model !== "string") continue;
+          result.agentModels[name] = model;
         }
       }
     }
   } catch (_) {
     // Non-fatal: use defaults
   }
+  return result;
 }
 
 const ORCHESTRATOR_SYSTEM = `You are a senior tech lead orchestrating a team of specialized AI agents.
@@ -94,19 +121,23 @@ const EXAMPLE_CONFIG = `{
     "backend": {
       "description": "Your custom backend agent instructions",
       "emoji": "⚙️",
-      "color": "#2dd4bf"
+      "color": "#2dd4bf",
+      "model": "claude-sonnet-4-6"
     },
     "devops": {
       "description": "DevOps agent for CI/CD, Docker, and infrastructure",
       "emoji": "🔧",
       "name": "DevOps",
-      "color": "#a78bfa"
+      "color": "#a78bfa",
+      "model": "claude-sonnet-4-6"
     }
   },
-  "defaultModels": {
+  "agentModels": {
     "orchestrator": "claude-sonnet-4-6",
-    "agent": "claude-sonnet-4-6",
-    "review": "claude-opus-4-7"
+    "backend": "claude-sonnet-4-6",
+    "frontend": "claude-sonnet-4-6",
+    "test": "claude-sonnet-4-6",
+    "manager": "claude-opus-4-7"
   }
 }`;
 

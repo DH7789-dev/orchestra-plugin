@@ -221,7 +221,170 @@ async function handleDashboardMessage(msg) {
         dashboard.post({ type: "history", runs });
       }
       break;
+
+    case "get_config": {
+      const cfg = vscode.workspace.getConfiguration("orchestra");
+      const workspaceRoot2 = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+      let customAgents = {};
+      let perAgentModels = {};
+      if (workspaceRoot2) {
+        const cfgFile = path.join(workspaceRoot2, cfg.get("configFile", ".orchestra/config.json"));
+        try {
+          if (fs.existsSync(cfgFile)) {
+            const raw = JSON.parse(fs.readFileSync(cfgFile, "utf-8"));
+            customAgents = raw.agents || {};
+            perAgentModels = raw.agentModels || {};
+            for (const [name, def] of Object.entries(customAgents)) {
+              if (def.model && !perAgentModels[name]) perAgentModels[name] = def.model;
+            }
+          }
+        } catch (_) {}
+      }
+
+      dashboard.post({
+        type: "config",
+        orchestratorModel: cfg.get("orchestratorModel", "claude-sonnet-4-6"),
+        agentModel: cfg.get("agentModel", "claude-sonnet-4-6"),
+        reviewModel: cfg.get("reviewModel", "claude-opus-4-7"),
+        autoCheckpoint: cfg.get("autoCheckpoint", true),
+        requirePlanApproval: cfg.get("requirePlanApproval", true),
+        runQualityGates: cfg.get("runQualityGates", true),
+        customAgents,
+        perAgentModels,
+      });
+      break;
+    }
+
+    case "save_agent": {
+      if (!workspaceRoot) break;
+      if (!isValidAgentName(msg.name)) {
+        dashboard.post({ type: "config_saved", success: false, error: "Invalid agent name (use a-z, 0-9, _ or -)" });
+        break;
+      }
+      if (msg.model && !isValidModel(msg.model)) {
+        dashboard.post({ type: "config_saved", success: false, error: "Invalid model" });
+        break;
+      }
+
+      const cfgDir = path.join(workspaceRoot, ".orchestra");
+      const cfgFile = path.join(cfgDir, "config.json");
+      if (!fs.existsSync(cfgDir)) fs.mkdirSync(cfgDir, { recursive: true });
+
+      let existingCfg = {};
+      try {
+        if (fs.existsSync(cfgFile)) existingCfg = JSON.parse(fs.readFileSync(cfgFile, "utf-8"));
+      } catch (_) {}
+
+      if (!existingCfg.agents || typeof existingCfg.agents !== "object") existingCfg.agents = {};
+      existingCfg.agents[msg.name] = {
+        description: typeof msg.description === "string" ? msg.description : "",
+        emoji: typeof msg.emoji === "string" ? msg.emoji : "🤖",
+        name: typeof msg.displayName === "string" && msg.displayName ? msg.displayName : msg.name,
+        color: typeof msg.color === "string" ? msg.color : "#888",
+        ...(msg.model ? { model: msg.model } : {}),
+      };
+
+      if (msg.model) {
+        if (!existingCfg.agentModels || typeof existingCfg.agentModels !== "object") existingCfg.agentModels = {};
+        existingCfg.agentModels[msg.name] = msg.model;
+      }
+
+      try {
+        fs.writeFileSync(cfgFile, JSON.stringify(existingCfg, null, 2));
+        dashboard.post({ type: "config_saved", success: true, agentName: msg.name });
+      } catch (err) {
+        dashboard.post({ type: "config_saved", success: false, error: `Write failed: ${err.message}` });
+      }
+      handleDashboardMessage({ command: "get_config" });
+      break;
+    }
+
+    case "delete_agent": {
+      if (!workspaceRoot) break;
+      if (!isValidAgentName(msg.name)) break;
+      const cfgFile2 = path.join(workspaceRoot, ".orchestra", "config.json");
+      try {
+        if (fs.existsSync(cfgFile2)) {
+          const raw = JSON.parse(fs.readFileSync(cfgFile2, "utf-8"));
+          if (raw.agents && Object.prototype.hasOwnProperty.call(raw.agents, msg.name)) delete raw.agents[msg.name];
+          if (raw.agentModels && Object.prototype.hasOwnProperty.call(raw.agentModels, msg.name)) delete raw.agentModels[msg.name];
+          fs.writeFileSync(cfgFile2, JSON.stringify(raw, null, 2));
+        }
+      } catch (_) {}
+      dashboard.post({ type: "config_saved", success: true, agentName: msg.name });
+      handleDashboardMessage({ command: "get_config" });
+      break;
+    }
+
+    case "update_model": {
+      const cfg3 = vscode.workspace.getConfiguration("orchestra");
+      const validSettings = ["orchestratorModel", "agentModel", "reviewModel"];
+      const toggleSettings = ["autoCheckpoint", "requirePlanApproval", "runQualityGates"];
+
+      if (validSettings.includes(msg.setting)) {
+        if (!isValidModel(msg.model)) {
+          dashboard.post({ type: "config_saved", success: false, error: "Invalid model" });
+          break;
+        }
+        await cfg3.update(msg.setting, msg.model, vscode.ConfigurationTarget.Global);
+      } else if (toggleSettings.includes(msg.setting)) {
+        await cfg3.update(msg.setting, !!msg.model, vscode.ConfigurationTarget.Global);
+      } else if (msg.agentName) {
+        if (!workspaceRoot) break;
+        if (!isValidAgentName(msg.agentName)) break;
+        const cfgDir3 = path.join(workspaceRoot, ".orchestra");
+        const cfgFile3 = path.join(cfgDir3, "config.json");
+        if (!fs.existsSync(cfgDir3)) fs.mkdirSync(cfgDir3, { recursive: true });
+        let existingCfg3 = {};
+        try {
+          if (fs.existsSync(cfgFile3)) existingCfg3 = JSON.parse(fs.readFileSync(cfgFile3, "utf-8"));
+        } catch (_) {}
+        if (!existingCfg3.agentModels || typeof existingCfg3.agentModels !== "object") existingCfg3.agentModels = {};
+        if (msg.model === "" || msg.model == null) {
+          if (Object.prototype.hasOwnProperty.call(existingCfg3.agentModels, msg.agentName)) {
+            delete existingCfg3.agentModels[msg.agentName];
+          }
+          if (existingCfg3.agents && existingCfg3.agents[msg.agentName] && Object.prototype.hasOwnProperty.call(existingCfg3.agents[msg.agentName], "model")) {
+            delete existingCfg3.agents[msg.agentName].model;
+          }
+        } else {
+          if (!isValidModel(msg.model)) {
+            dashboard.post({ type: "config_saved", success: false, error: "Invalid model" });
+            break;
+          }
+          existingCfg3.agentModels[msg.agentName] = msg.model;
+          if (existingCfg3.agents && existingCfg3.agents[msg.agentName]) {
+            existingCfg3.agents[msg.agentName].model = msg.model;
+          }
+        }
+        try {
+          fs.writeFileSync(cfgFile3, JSON.stringify(existingCfg3, null, 2));
+        } catch (err) {
+          dashboard.post({ type: "config_saved", success: false, error: `Write failed: ${err.message}` });
+          break;
+        }
+      }
+      dashboard.post({ type: "config_saved", success: true });
+      handleDashboardMessage({ command: "get_config" });
+      break;
+    }
   }
+}
+
+// Strict allowlist for agent identifiers. Rejects empty, prototype-pollution
+// keys (e.g. __proto__, constructor) and anything outside [a-z0-9_-].
+const ALLOWED_MODELS = new Set(["claude-sonnet-4-6", "claude-opus-4-7", "composer-2", "gpt-5.5"]);
+const RESERVED_AGENT_NAMES = new Set(["__proto__", "prototype", "constructor", "hasOwnProperty", "toString"]);
+function isValidAgentName(n) {
+  return typeof n === "string"
+    && n.length > 0
+    && n.length <= 64
+    && /^[a-z0-9_-]+$/.test(n)
+    && !RESERVED_AGENT_NAMES.has(n);
+}
+function isValidModel(m) {
+  return typeof m === "string" && ALLOWED_MODELS.has(m);
 }
 
 async function doAbort() {

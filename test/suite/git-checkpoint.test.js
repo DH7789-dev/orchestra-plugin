@@ -57,7 +57,7 @@ describe("git-checkpoint", () => {
     // Simulate agent writing files
     fs.writeFileSync(path.join(tmpDir, "agent-output.ts"), "// created by agent");
     execSync("git add -A", { cwd: tmpDir, stdio: "pipe" });
-    execSync("git commit -m 'agent output'", { cwd: tmpDir, stdio: "pipe" });
+    execSync(`git commit -m "agent output"`, { cwd: tmpDir, stdio: "pipe" });
 
     // Rollback
     const rollbackLogs = [];
