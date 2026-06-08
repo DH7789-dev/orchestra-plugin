@@ -1,0 +1,103 @@
+{
+  "name": "cursor-orchestra",
+  "displayName": "Orchestra — Multi-Agent Orchestrator",
+  "description": "Orchestrate 4 specialized AI agents (backend, frontend, test, manager) from a single prompt. Uses your Cursor subscription — no external API key needed.",
+  "version": "2.0.0",
+  "publisher": "orchestra",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/orchestra-plugin"
+  },
+  "bugs": {
+    "url": "https://github.com/your-username/orchestra-plugin/issues"
+  },
+  "homepage": "https://github.com/your-username/orchestra-plugin#readme",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other", "Programming Languages"],
+  "keywords": ["cursor", "ai", "agents", "orchestration", "multi-agent", "backend", "frontend"],
+  "activationEvents": [
+    "onCommand:orchestra.run",
+    "onCommand:orchestra.configure",
+    "onCommand:orchestra.abort"
+  ],
+  "main": "./src/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "orchestra.run",
+        "title": "Orchestra: Run Multi-Agent Task",
+        "icon": "$(play)"
+      },
+      {
+        "command": "orchestra.configure",
+        "title": "Orchestra: Configure"
+      },
+      {
+        "command": "orchestra.abort",
+        "title": "Orchestra: Abort Current Run"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "orchestra.run",
+        "key": "ctrl+shift+o",
+        "mac": "cmd+shift+o"
+      }
+    ],
+    "configuration": {
+      "title": "Orchestra",
+      "properties": {
+        "orchestra.cursorApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Cursor API Key (from https://cursor.com/dashboard/integrations). Uses your existing Cursor subscription.",
+          "scope": "application"
+        },
+        "orchestra.orchestratorModel": {
+          "type": "string",
+          "default": "claude-sonnet-4-6",
+          "enum": ["claude-sonnet-4-6", "claude-opus-4-7", "composer-2", "gpt-5.5"],
+          "enumDescriptions": [
+            "Fast and smart — recommended for planning",
+            "Best quality — slower and more expensive",
+            "Cursor's native model — fastest and cheapest",
+            "OpenAI alternative"
+          ],
+          "description": "Model used by the orchestrator agent for planning and decomposition"
+        },
+        "orchestra.agentModel": {
+          "type": "string",
+          "default": "claude-sonnet-4-6",
+          "enum": ["claude-sonnet-4-6", "claude-opus-4-7", "composer-2", "gpt-5.5"],
+          "description": "Model used by backend, frontend, and test agents for implementation"
+        },
+        "orchestra.reviewModel": {
+          "type": "string",
+          "default": "claude-opus-4-7",
+          "enum": ["claude-sonnet-4-6", "claude-opus-4-7", "composer-2", "gpt-5.5"],
+          "description": "Model used by the manager agent for code review (best quality recommended)"
+        },
+        "orchestra.enabledAgents": {
+          "type": "object",
+          "default": {
+            "backend": true,
+            "frontend": true,
+            "test": true,
+            "manager": true
+          },
+          "description": "Enable or disable specific agents"
+        }
+      }
+    }
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.0.0"
+  },
+  "scripts": {
+    "package": "vsce package --no-dependencies --no-yarn --no-git-tag-version --allow-missing-repository",
+    "install-ext": "code --install-extension cursor-orchestra-2.0.0.vsix"
+  }
+}
