@@ -1,103 +1,75 @@
 {
   "name": "cursor-orchestra",
-  "displayName": "Orchestra — Multi-Agent Orchestrator",
-  "description": "Orchestrate 4 specialized AI agents (backend, frontend, test, manager) from a single prompt. Uses your Cursor subscription — no external API key needed.",
-  "version": "2.0.0",
+  "displayName": "Orchestra — Professional Multi-Agent Orchestrator",
+  "description": "Production-grade multi-agent orchestration for Cursor. Git checkpoints, diff preview, plan review, quality gates, cost tracking, configurable agents, and full observability.",
+  "version": "3.0.0",
   "publisher": "orchestra",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/your-username/orchestra-plugin"
-  },
-  "bugs": {
-    "url": "https://github.com/your-username/orchestra-plugin/issues"
-  },
-  "homepage": "https://github.com/your-username/orchestra-plugin#readme",
-  "engines": {
-    "vscode": "^1.85.0"
-  },
+  "repository": { "type": "git", "url": "https://github.com/your-username/orchestra-plugin" },
+  "engines": { "vscode": "^1.85.0" },
   "categories": ["Other", "Programming Languages"],
-  "keywords": ["cursor", "ai", "agents", "orchestration", "multi-agent", "backend", "frontend"],
+  "keywords": ["cursor", "ai", "agents", "orchestration", "multi-agent"],
   "activationEvents": [
     "onCommand:orchestra.run",
+    "onCommand:orchestra.runWithPlan",
+    "onCommand:orchestra.rollback",
     "onCommand:orchestra.configure",
-    "onCommand:orchestra.abort"
+    "onCommand:orchestra.abort",
+    "onCommand:orchestra.showDashboard",
+    "onCommand:orchestra.showHistory",
+    "onView:orchestra.dashboard"
   ],
   "main": "./src/extension.js",
   "contributes": {
     "commands": [
-      {
-        "command": "orchestra.run",
-        "title": "Orchestra: Run Multi-Agent Task",
-        "icon": "$(play)"
-      },
-      {
-        "command": "orchestra.configure",
-        "title": "Orchestra: Configure"
-      },
-      {
-        "command": "orchestra.abort",
-        "title": "Orchestra: Abort Current Run"
-      }
+      { "command": "orchestra.run",           "title": "Orchestra: Run (auto)",             "icon": "$(play)" },
+      { "command": "orchestra.runWithPlan",   "title": "Orchestra: Run with Plan Preview",  "icon": "$(preview)" },
+      { "command": "orchestra.rollback",      "title": "Orchestra: Rollback Last Run",      "icon": "$(discard)" },
+      { "command": "orchestra.abort",         "title": "Orchestra: Abort Current Run",      "icon": "$(stop)" },
+      { "command": "orchestra.configure",     "title": "Orchestra: Configure",              "icon": "$(gear)" },
+      { "command": "orchestra.showDashboard", "title": "Orchestra: Show Dashboard" },
+      { "command": "orchestra.showHistory",   "title": "Orchestra: Show Run History" }
     ],
     "keybindings": [
-      {
-        "command": "orchestra.run",
-        "key": "ctrl+shift+o",
-        "mac": "cmd+shift+o"
-      }
+      { "command": "orchestra.run",         "key": "ctrl+shift+o", "mac": "cmd+shift+o" },
+      { "command": "orchestra.runWithPlan", "key": "ctrl+shift+p", "mac": "cmd+shift+p",
+        "when": "focusedView == orchestra.dashboard || editorFocus" }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "orchestra-sidebar", "title": "Orchestra", "icon": "media/icon.svg" }
+      ]
+    },
+    "views": {
+      "orchestra-sidebar": [
+        { "type": "webview", "id": "orchestra.dashboard", "name": "Dashboard" }
+      ]
+    },
     "configuration": {
       "title": "Orchestra",
       "properties": {
-        "orchestra.cursorApiKey": {
-          "type": "string",
-          "default": "",
-          "description": "Cursor API Key (from https://cursor.com/dashboard/integrations). Uses your existing Cursor subscription.",
-          "scope": "application"
-        },
-        "orchestra.orchestratorModel": {
-          "type": "string",
-          "default": "claude-sonnet-4-6",
-          "enum": ["claude-sonnet-4-6", "claude-opus-4-7", "composer-2", "gpt-5.5"],
-          "enumDescriptions": [
-            "Fast and smart — recommended for planning",
-            "Best quality — slower and more expensive",
-            "Cursor's native model — fastest and cheapest",
-            "OpenAI alternative"
-          ],
-          "description": "Model used by the orchestrator agent for planning and decomposition"
-        },
-        "orchestra.agentModel": {
-          "type": "string",
-          "default": "claude-sonnet-4-6",
-          "enum": ["claude-sonnet-4-6", "claude-opus-4-7", "composer-2", "gpt-5.5"],
-          "description": "Model used by backend, frontend, and test agents for implementation"
-        },
-        "orchestra.reviewModel": {
-          "type": "string",
-          "default": "claude-opus-4-7",
-          "enum": ["claude-sonnet-4-6", "claude-opus-4-7", "composer-2", "gpt-5.5"],
-          "description": "Model used by the manager agent for code review (best quality recommended)"
-        },
-        "orchestra.enabledAgents": {
-          "type": "object",
-          "default": {
-            "backend": true,
-            "frontend": true,
-            "test": true,
-            "manager": true
-          },
-          "description": "Enable or disable specific agents"
-        }
+        "orchestra.cursorApiKey":       { "type": "string",  "default": "", "description": "Cursor API Key (cursor.com/dashboard/integrations)", "scope": "application" },
+        "orchestra.orchestratorModel":  { "type": "string",  "default": "claude-sonnet-4-6", "enum": ["claude-sonnet-4-6","claude-opus-4-7","composer-2","gpt-5.5"], "description": "Model for planning & decomposition" },
+        "orchestra.agentModel":         { "type": "string",  "default": "claude-sonnet-4-6", "enum": ["claude-sonnet-4-6","claude-opus-4-7","composer-2","gpt-5.5"], "description": "Model for backend/frontend/test agents" },
+        "orchestra.reviewModel":        { "type": "string",  "default": "claude-opus-4-7",   "enum": ["claude-sonnet-4-6","claude-opus-4-7","composer-2","gpt-5.5"], "description": "Model for manager review (best quality recommended)" },
+        "orchestra.autoCheckpoint":     { "type": "boolean", "default": true, "description": "Create git checkpoint before each run" },
+        "orchestra.requirePlanApproval":{ "type": "boolean", "default": true, "description": "Show plan for approval before executing agents" },
+        "orchestra.runQualityGates":    { "type": "boolean", "default": true, "description": "Run npm test + lint + build after agents complete" },
+        "orchestra.autoApplyDiff":      { "type": "boolean", "default": false, "description": "Apply file changes without diff preview" },
+        "orchestra.configFile":         { "type": "string",  "default": ".orchestra/config.json", "description": "Path to custom orchestra config file" },
+        "orchestra.maxRunHistory":      { "type": "number",  "default": 50, "description": "Maximum number of runs to keep in history" }
       }
     }
   },
   "devDependencies": {
-    "@vscode/vsce": "^3.0.0"
+    "@vscode/vsce": "^3.0.0",
+    "@vscode/test-electron": "^2.3.0",
+    "mocha": "^10.4.0",
+    "chai": "^5.1.0"
   },
   "scripts": {
     "package": "vsce package --no-dependencies --no-yarn --no-git-tag-version --allow-missing-repository",
-    "install-ext": "code --install-extension cursor-orchestra-2.0.0.vsix"
+    "test": "node test/runner.js",
+    "pretest": "echo 'Running Orchestra tests...'"
   }
 }

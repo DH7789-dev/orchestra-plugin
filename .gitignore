@@ -1,6 +1,5 @@
 node_modules/
 *.vsix
-dist/
+.orchestra/runs/
 .env
 .DS_Store
-Thumbs.db

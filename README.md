@@ -1,36 +1,21 @@
-# 🎯 Orchestra — Multi-Agent Orchestrator for Cursor
+# 🎯 Orchestra v3 — Professional Multi-Agent Orchestrator
 
-> **One prompt → 4 specialized AI agents → full-stack feature delivered.**
-
-Orchestra is a Cursor extension that decomposes your feature request and runs four specialized AI agents in coordination — backend, frontend, test, and manager. It uses your **existing Cursor subscription** (Pro or Business). No Anthropic API key needed.
+**Production-grade multi-agent orchestration for Cursor. One prompt. Full-stack delivery. Zero risk.**
 
 ---
 
-## How it works
+## What's new in v3
 
-```
-You: "Add a real-time notification system"
-              │
-              ▼
-   🎯 Orchestrator  →  scans project, decomposes feature, creates subagents
-              │
-      ┌───────┼───────┐
-      ▼               ▼
- ⚙️ Backend      🎨 Frontend       ← run in parallel
- API + DB         UI components
-      │               │
-      └───────┬───────┘
-              ▼
-         🧪 Test           ← unit + integration + E2E
-              │
-              ▼
-         📋 Manager         ← code review + security + docs
-              │
-              ▼
-   ✅ Files written to your project
-```
-
-All agents run with full filesystem access. They can read existing code, create new files, and communicate context (like API contracts) through the orchestrator.
+| Feature | Description |
+|---|---|
+| 🔒 **Git checkpoints** | Automatic commit before every run. One-click rollback. |
+| 👁 **Plan preview gate** | See and approve the execution plan before agents start. |
+| 🔬 **Quality gates** | Runs `npm test`, `lint`, `build` after agents complete. |
+| 📊 **Cost tracking** | Token count and estimated cost per agent, in real time. |
+| 📋 **Run history** | Full history with status, cost, and git diff. |
+| ⚙️ **Custom agents** | Add agents or override prompts via `.orchestra/config.json`. |
+| 🧪 **Test suite** | 20+ unit tests covering all core modules. |
+| 🎨 **Dashboard** | Professional webview with tabs, agent cards, cost table. |
 
 ---
 
@@ -38,121 +23,148 @@ All agents run with full filesystem access. They can read existing code, create 
 
 ### Step 1 — Install the Cursor SDK
 
-The SDK ships with native binaries, so it must be installed separately:
-
 ```bash
-# In your project (recommended)
-npm install @cursor/sdk
-
-# Or globally
-npm install -g @cursor/sdk
+npm install @cursor/sdk        # in your project
+# or
+npm install -g @cursor/sdk     # globally
 ```
 
 ### Step 2 — Get your Cursor API Key
 
-Go to **https://cursor.com/dashboard/integrations** → *User API Keys* → **Generate**
-
-Copy the `crsr_…` key. This uses your existing Cursor subscription — no extra cost.
+→ **https://cursor.com/dashboard/integrations** → *User API Keys* → **Generate**
 
 ### Step 3 — Install the extension
 
-**Option A — From the pre-built .vsix:**
-
-1. Download `cursor-orchestra-2.0.0.vsix` from [Releases](https://github.com/your-username/orchestra-plugin/releases)
-2. In Cursor: `Cmd+Shift+P` → *Extensions: Install from VSIX…*
-3. Select the file
-4. Reload: `Cmd+Shift+P` → *Developer: Reload Window*
-
-**Option B — Build from source:**
-
-```bash
-git clone https://github.com/your-username/orchestra-plugin
-cd orchestra-plugin
-npm install
-npm run package
-# Then install the generated .vsix in Cursor
+```
+Cmd+Shift+P → Extensions: Install from VSIX…
+Select: cursor-orchestra-3.0.0.vsix
+Cmd+Shift+P → Developer: Reload Window
 ```
 
 ---
 
 ## Usage
 
-### Run
+### Quick run
 
-Press **`Cmd+Shift+O`** (Mac) or **`Ctrl+Shift+O`** (Windows/Linux).
+**`Cmd+Shift+O`** — Enter your feature request → agents execute automatically.
 
-On first run, you'll be prompted for your Cursor API Key. It's saved globally — you won't be asked again.
+### Run with plan preview
 
-Then describe your feature in natural language:
+**`Cmd+Shift+P`** (or click 👁 in the dashboard) — Orchestrator proposes a plan first. You approve or cancel before any code is written.
 
-```
-User auth with OAuth Google, profile page with avatar upload, and full test coverage
-```
+### Dashboard
 
-Watch the Output panel — each agent streams its work in real time.
+Click the Orchestra icon in the activity bar (left sidebar). Three tabs:
+- **Run** — input box + quick actions
+- **Status** — live agent cards, cost table, quality gate results
+- **History** — all past runs with status and cost
 
-### Configure
+### Rollback
 
-`Cmd+Shift+P` → *Orchestra: Configure*
-
-| Setting | Default | Description |
-|---|---|---|
-| `orchestra.cursorApiKey` | — | Your `crsr_…` API key |
-| `orchestra.orchestratorModel` | `claude-sonnet-4-6` | Model for planning |
-| `orchestra.agentModel` | `claude-sonnet-4-6` | Model for backend/frontend/test |
-| `orchestra.reviewModel` | `claude-opus-4-7` | Model for code review |
-| `orchestra.enabledAgents` | all enabled | Toggle individual agents |
-
-### Abort
-
-`Cmd+Shift+P` → *Orchestra: Abort Current Run*
+After any run, click **↩ Undo** in the dashboard (or `Cmd+Shift+P → Orchestra: Rollback`) to restore your project to its pre-run state. Works via git reset.
 
 ---
 
-## Agents
+## Custom agents
 
-| Agent | Model (default) | Responsibilities |
+Run `Cmd+Shift+P → Orchestra: Configure → Generate config file` to create `.orchestra/config.json`:
+
+```json
+{
+  "agents": {
+    "backend": {
+      "description": "Your custom backend agent instructions"
+    },
+    "devops": {
+      "description": "DevOps agent for CI/CD, Docker, and infrastructure",
+      "emoji": "🔧",
+      "name": "DevOps",
+      "color": "#a78bfa"
+    }
+  }
+}
+```
+
+Add any new agent name — Orchestra discovers it automatically.
+
+---
+
+## Configuration
+
+| Setting | Default | Description |
 |---|---|---|
-| 🎯 Orchestrator | Sonnet 4.6 | Analyzes project, decomposes feature, delegates tasks |
-| ⚙️ Backend | Sonnet 4.6 | API endpoints, DB models, services, auth, middleware |
-| 🎨 Frontend | Sonnet 4.6 | Components, pages, routing, state, styling, forms |
-| 🧪 Test | Sonnet 4.6 | Unit (70%), integration (20%), E2E (10%) tests |
-| 📋 Manager | Opus 4.7 | Code review, security audit, docs, consistency |
+| `orchestra.cursorApiKey` | — | Cursor API Key (`crsr_…`) |
+| `orchestra.orchestratorModel` | `claude-sonnet-4-6` | Planning model |
+| `orchestra.agentModel` | `claude-sonnet-4-6` | Implementation agents |
+| `orchestra.reviewModel` | `claude-opus-4-7` | Manager review |
+| `orchestra.autoCheckpoint` | `true` | Git checkpoint before run |
+| `orchestra.requirePlanApproval` | `true` | Show plan before executing |
+| `orchestra.runQualityGates` | `true` | Run test/lint/build after |
+| `orchestra.autoApplyDiff` | `false` | Skip diff review |
+
+---
+
+## Architecture
+
+```
+src/
+├── extension.js      # VS Code entry point — commands, lifecycle
+├── runner.js         # Orchestration engine — all phases
+├── agents.js         # Agent prompts, metadata, custom config loader
+├── git-checkpoint.js # Git safety layer — checkpoint + rollback
+├── quality-gates.js  # Runs npm test/lint/build
+├── cost-tracker.js   # Token + cost tracking per agent
+├── run-store.js      # Run history persistence (.orchestra/runs/)
+├── dashboard.js      # Webview UI — tabs, cards, history
+└── sdk-resolver.js   # Finds @cursor/sdk in multiple locations
+
+test/suite/
+├── git-checkpoint.test.js
+├── quality-gates.test.js
+├── run-store.test.js
+└── cost-tracker.test.js
+```
+
+---
+
+## Run lifecycle
+
+```
+1. Cmd+Shift+O → feature request
+2. Git checkpoint (stash + commit on branch orchestra/run-{id})
+3. Plan generation (orchestrator proposes tasks)
+4. Plan approval gate (you approve or cancel)
+5. Agent execution (backend → frontend → test → manager)
+6. Quality gates (npm test + lint + build)
+7. Final commit with run summary
+8. Dashboard shows cost, gate results, run history
+```
 
 ---
 
 ## Token consumption
 
-| Phase | Tokens (approx) |
+| Phase | Typical range |
 |---|---|
-| Orchestrator (plan) | ~4–6K |
-| Backend agent | ~6–10K |
-| Frontend agent | ~6–10K |
-| Test agent | ~5–8K |
-| Manager review | ~4–8K |
-| **Total per feature** | **~25–42K** |
+| Orchestrator (plan + exec) | 6–12K |
+| Backend agent | 6–10K |
+| Frontend agent | 6–10K |
+| Test agent | 5–8K |
+| Manager review | 4–8K |
+| **Total** | **27–48K** |
 
 ---
 
-## Troubleshooting
+## Development
 
-**`@cursor/sdk not found`**
-The extension will offer to install it for you. Click *Install in project* or *Install globally*. After the terminal finishes, run Orchestra again.
-
-**`authentication_error`**
-Your API key is invalid or expired. Run *Orchestra: Configure* to update it.
-
-**`rate_limit_error`**
-You've hit your Cursor plan's token limit. Wait a few minutes, or switch agents to `composer-2` (cheaper).
-
-**Extension not visible**
-After installing the `.vsix`, reload Cursor: `Cmd+Shift+P` → *Developer: Reload Window*.
-
----
-
-## Contributing
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md).
+```bash
+git clone https://github.com/your-username/orchestra-plugin
+cd orchestra-plugin
+npm install
+npm test          # run the test suite
+npm run package   # build the .vsix
+```
 
 ---
 
