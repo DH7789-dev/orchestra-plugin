@@ -2,8 +2,6 @@
  * Orchestra Dashboard — professional webview with live task tree, cost tracker, history
  */
 
-const { AGENT_META } = require("./agents");
-
 class DashboardProvider {
   constructor(extensionUri, onMessage) {
     this._extensionUri = extensionUri;
@@ -13,9 +11,13 @@ class DashboardProvider {
 
   resolveWebviewView(webviewView) {
     this._view = webviewView;
-    webviewView.webview.options = { enableScripts: true };
+    webviewView.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [this._extensionUri],
+    };
     webviewView.webview.html = this._getHtml();
     webviewView.webview.onDidReceiveMessage(msg => this._onMessage?.(msg));
+    this._onMessage?.({ command: 'get_config' });
   }
 
   post(msg) {
@@ -23,10 +25,13 @@ class DashboardProvider {
   }
 
   _getHtml() {
+    const crypto = require('crypto');
+    const nonce = crypto.randomBytes(16).toString('base64');
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
@@ -139,10 +144,10 @@ class DashboardProvider {
   <div class="input-box">
     <textarea id="featureInput" placeholder="Describe the feature to build…" rows="3"></textarea>
     <div class="btn-col">
-      <button class="btn btn-primary" id="btnRun"      onclick="run(false)">▶ Run</button>
-      <button class="btn btn-secondary" id="btnPlan"   onclick="run(true)">👁 Plan</button>
-      <button class="btn btn-danger"   id="btnAbort"   onclick="abort()" style="display:none">⏹ Abort</button>
-      <button class="btn btn-secondary" id="btnRollback" onclick="rollback()" style="display:none">↩ Undo</button>
+      <button class="btn btn-primary" id="btnRun">▶ Run</button>
+      <button class="btn btn-secondary" id="btnPlan">👁 Plan</button>
+      <button class="btn btn-danger"   id="btnAbort"    style="display:none">⏹ Abort</button>
+      <button class="btn btn-secondary" id="btnRollback" style="display:none">↩ Undo</button>
     </div>
   </div>
   <div class="banner info" id="banner"></div>
@@ -150,6 +155,7 @@ class DashboardProvider {
 
 <!-- STATUS PAGE -->
 <div class="page" id="page-status">
+  <div class="empty-state" id="status-empty">No active run. Start an orchestration from the Run tab.</div>
   <div class="banner info" id="status-banner"></div>
 
   <div id="agents-section" style="display:none">
@@ -183,10 +189,11 @@ class DashboardProvider {
 
 <!-- CONFIG PAGE -->
 <div class="page" id="page-config">
+  <div class="empty-state" id="config-loading">Loading configuration…</div>
   <div class="section-label">Global Models</div>
   <div class="config-row">
     <span class="config-label">Orchestrator</span>
-    <select class="config-select" id="select-orchestratorModel" onchange="updateModel('orchestratorModel', this.value)">
+    <select class="config-select" id="select-orchestratorModel">
       <option value="claude-sonnet-4-6">claude-sonnet-4-6</option>
       <option value="claude-opus-4-7">claude-opus-4-7</option>
       <option value="composer-2">composer-2</option>
@@ -195,7 +202,7 @@ class DashboardProvider {
   </div>
   <div class="config-row">
     <span class="config-label">Agent (backend/front/test)</span>
-    <select class="config-select" id="select-agentModel" onchange="updateModel('agentModel', this.value)">
+    <select class="config-select" id="select-agentModel">
       <option value="claude-sonnet-4-6">claude-sonnet-4-6</option>
       <option value="claude-opus-4-7">claude-opus-4-7</option>
       <option value="composer-2">composer-2</option>
@@ -204,7 +211,7 @@ class DashboardProvider {
   </div>
   <div class="config-row">
     <span class="config-label">Manager (review)</span>
-    <select class="config-select" id="select-reviewModel" onchange="updateModel('reviewModel', this.value)">
+    <select class="config-select" id="select-reviewModel">
       <option value="claude-sonnet-4-6">claude-sonnet-4-6</option>
       <option value="claude-opus-4-7">claude-opus-4-7</option>
       <option value="composer-2">composer-2</option>
@@ -233,14 +240,14 @@ class DashboardProvider {
       </select>
     </div>
     <textarea id="agent-description" placeholder="Agent instructions/description…" class="config-textarea" rows="3"></textarea>
-    <button class="btn btn-primary" onclick="saveAgent()">Save Agent</button>
+    <button class="btn btn-primary" id="btnSaveAgent">Save Agent</button>
   </div>
 
   <div class="section-label" style="margin-top:12px">Settings</div>
   <div id="settings-toggles"></div>
 </div>
 
-<script>
+<script nonce="${nonce}">
 const vsc = acquireVsCodeApi();
 function post(cmd, data) { vsc.postMessage({ command: cmd, ...data }); }
 
@@ -253,6 +260,34 @@ document.querySelectorAll('.tab').forEach(t => {
     if (t.dataset.page === 'history') post('load_history');
     if (t.dataset.page === 'config') post('get_config');
   });
+});
+
+// ── Static button listeners ─────────────────────────────
+document.getElementById('btnRun').addEventListener('click', () => run(false));
+document.getElementById('btnPlan').addEventListener('click', () => run(true));
+document.getElementById('btnAbort').addEventListener('click', () => abort());
+document.getElementById('btnRollback').addEventListener('click', () => rollback());
+document.getElementById('btnSaveAgent').addEventListener('click', saveAgent);
+
+// ── Static model select listeners ──────────────────────
+['orchestratorModel', 'agentModel', 'reviewModel'].forEach(s => {
+  document.getElementById('select-' + s).addEventListener('change', e => updateModel(s, e.target.value));
+});
+
+// ── Config event delegation ─────────────────────────────
+document.getElementById('per-agent-models').addEventListener('change', e => {
+  const sel = e.target.closest('select[data-agent-name]');
+  if (sel) updateModel(null, sel.value, sel.dataset.agentName);
+});
+document.getElementById('custom-agents-list').addEventListener('click', e => {
+  const editBtn = e.target.closest('.btn-edit[data-agent-name]');
+  const delBtn  = e.target.closest('.btn-delete[data-agent-name]');
+  if (editBtn) editAgent(editBtn.dataset.agentName);
+  if (delBtn)  deleteAgent(delBtn.dataset.agentName);
+});
+document.getElementById('settings-toggles').addEventListener('click', e => {
+  const btn = e.target.closest('.toggle-btn[data-key]');
+  if (btn) toggleCfg(btn.dataset.key, btn.dataset.val === 'true');
 });
 
 // ── Actions ────────────────────────────────────────────
@@ -319,6 +354,7 @@ window.addEventListener('message', ({ data: msg }) => {
     document.getElementById('btnAbort').style.display = 'inline-block';
     document.getElementById('btnRun').disabled  = true;
     document.getElementById('btnPlan').disabled = true;
+    document.getElementById('status-empty').style.display = 'none';
     setBanner('banner', '⏳ Orchestration in progress…', 'info');
     setBanner('status-banner', '🔄 Running…', 'info');
     // Switch to status tab
@@ -328,7 +364,6 @@ window.addEventListener('message', ({ data: msg }) => {
   }
 
   if (p === 'plan_ready') {
-    const plan = msg.plan;
     setBanner('status-banner', '📋 Plan ready — awaiting approval…', 'warn');
   }
 
@@ -387,6 +422,7 @@ window.addEventListener('message', ({ data: msg }) => {
       tbody.appendChild(tr);
     }
 
+    document.getElementById('status-empty').style.display = '';
     setBanner('status-banner', '✅ Orchestration complete', 'success');
     for (const a of Object.keys(agentStates)) {
       if (agentStates[a].status === 'running') agentStates[a].status = 'done';
@@ -398,6 +434,7 @@ window.addEventListener('message', ({ data: msg }) => {
     document.getElementById('btnAbort').style.display    = 'none';
     document.getElementById('btnRun').disabled  = false;
     document.getElementById('btnPlan').disabled = false;
+    document.getElementById('status-empty').style.display = '';
     setBanner('banner', '❌ Run failed: ' + msg.error, 'error');
     setBanner('status-banner', '❌ Failed', 'error');
   }
@@ -406,6 +443,7 @@ window.addEventListener('message', ({ data: msg }) => {
     document.getElementById('btnAbort').style.display = 'none';
     document.getElementById('btnRun').disabled  = false;
     document.getElementById('btnPlan').disabled = false;
+    document.getElementById('status-empty').style.display = '';
     setBanner('banner', '⏹ Cancelled', 'warn');
     setBanner('status-banner', '⏹ Cancelled', 'warn');
   }
@@ -503,6 +541,7 @@ function toggleCfg(setting, currentValue) {
 
 function renderConfig(cfg) {
   currentConfig = cfg;
+  document.getElementById('config-loading').style.display = 'none';
 
   ['orchestratorModel', 'agentModel', 'reviewModel'].forEach(s => {
     const el = document.getElementById('select-' + s);
@@ -524,7 +563,7 @@ function renderConfig(cfg) {
       MODELS.map(m => '<option value="' + m + '"' + (currentModel === m ? ' selected' : '') + '>' + m + '</option>').join('');
     row.innerHTML =
       '<span class="config-label">' + escHtml((meta.emoji || '') + ' ' + (meta.name || name)) + '</span>' +
-      '<select class="config-select" onchange="updateModel(null,this.value,' + escAttrArg(name) + ')">' + opts + '</select>';
+      '<select class="config-select" data-agent-name="' + escHtml(name) + '">' + opts + '</select>';
     perAgentDiv.appendChild(row);
   }
 
@@ -544,8 +583,8 @@ function renderConfig(cfg) {
           '<div class="agent-entry-name">' + escHtml(agent.name || name) + '</div>' +
           '<div class="agent-entry-desc">' + escHtml(agent.description || '') + '</div>' +
         '</div>' +
-        '<button class="btn btn-xs btn-edit" onclick="editAgent(' + escAttrArg(name) + ')">Edit</button>' +
-        '<button class="btn btn-xs btn-delete" onclick="deleteAgent(' + escAttrArg(name) + ')">Del</button>';
+        '<button class="btn btn-xs btn-edit" data-agent-name="' + escHtml(name) + '">Edit</button>' +
+        '<button class="btn btn-xs btn-delete" data-agent-name="' + escHtml(name) + '">Del</button>';
       customList.appendChild(el);
     }
   }
@@ -564,7 +603,8 @@ function renderConfig(cfg) {
     row.className = 'toggle-row';
     const btn = document.createElement('button');
     btn.className = 'toggle-btn ' + (val ? 'on' : 'off');
-    btn.setAttribute('onclick', 'toggleCfg(\'' + s.key + '\',' + val + ')');
+    btn.dataset.key = s.key;
+    btn.dataset.val = String(val);
     const label = document.createElement('span');
     label.className = 'toggle-label';
     label.textContent = s.label;
@@ -584,12 +624,6 @@ function timeSince(iso) {
 }
 function escHtml(s) {
   return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-}
-// Safe encoding of a string for use as a JS-string argument inside an HTML attribute.
-// Uses JSON.stringify (which escapes JS metacharacters) then HTML-encodes for attribute context.
-function escAttrArg(s) {
-  return JSON.stringify(String(s==null?'':s))
-    .replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;');
 }
 </script>
 </body>
