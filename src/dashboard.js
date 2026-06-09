@@ -128,6 +128,29 @@ class DashboardProvider {
   .btn-xs{padding:2px 7px;font-size:10px;border:none;border-radius:3px;cursor:pointer}
   .btn-edit{background:rgba(96,165,250,.12);color:#60a5fa}
   .btn-delete{background:rgba(248,113,113,.12);color:#f87171}
+
+  /* Memory tab */
+  .memory-card{border:1px solid var(--vscode-panel-border);border-radius:5px;padding:12px 14px;margin-bottom:10px}
+  .memory-header{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .memory-title{flex:1;font-size:12px;font-weight:600;color:var(--vscode-foreground)}
+  .memory-badge{font-size:10px;padding:2px 7px;border-radius:10px;background:rgba(52,211,153,.1);color:#34d399;border:1px solid rgba(52,211,153,.25);font-weight:500}
+  .memory-row{display:flex;align-items:flex-start;gap:8px;margin-bottom:5px;font-size:11px}
+  .memory-label{min-width:110px;flex-shrink:0;color:var(--vscode-descriptionForeground)}
+  .memory-value{color:var(--vscode-foreground);font-weight:500}
+  .memory-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:1px}
+  .memory-chip{padding:2px 7px;border-radius:3px;font-size:10px;font-weight:500;background:rgba(96,165,250,.1);color:#60a5fa;border:1px solid rgba(96,165,250,.2)}
+  .memory-actions{display:flex;gap:8px;margin-top:12px}
+  .memory-empty{display:flex;flex-direction:column;align-items:center;text-align:center;padding:32px 16px;gap:8px}
+  .memory-empty-icon{font-size:28px;line-height:1}
+  .memory-empty-title{font-size:12px;font-weight:600;color:var(--vscode-foreground)}
+  .memory-empty-desc{font-size:11px;color:var(--vscode-descriptionForeground);max-width:240px;line-height:1.6;margin-bottom:4px}
+  .memory-analyzing{border:1px solid var(--vscode-panel-border);border-radius:5px;padding:18px 14px;margin-bottom:10px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+  .memory-analyzing-header{font-size:12px;font-weight:600;color:var(--vscode-foreground)}
+  .memory-spinner{width:22px;height:22px;border:2px solid var(--vscode-panel-border);border-top-color:var(--vscode-focusBorder);border-radius:50%;animation:spin .8s linear infinite}
+  .memory-analyzing-sub{font-size:11px;color:var(--vscode-descriptionForeground);max-width:220px;line-height:1.6}
+  .memory-error{border:1px solid rgba(248,113,113,.3);background:rgba(248,113,113,.07);border-radius:5px;padding:12px 14px;margin-bottom:10px;display:flex;flex-direction:column;gap:10px}
+  .memory-error-msg{font-size:11px;color:#f87171;line-height:1.5}
+  @keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -136,6 +159,7 @@ class DashboardProvider {
   <div class="tab active" data-page="run">Run</div>
   <div class="tab" data-page="status">Status</div>
   <div class="tab" data-page="history">History</div>
+  <div class="tab" data-page="memory">Memory</div>
   <div class="tab" data-page="config">Config</div>
 </div>
 
@@ -184,6 +208,58 @@ class DashboardProvider {
 <div class="page" id="page-history">
   <div id="run-list" class="run-list">
     <div class="empty-state">No runs yet. Start an orchestration to see history.</div>
+  </div>
+</div>
+
+<!-- MEMORY PAGE -->
+<div class="page" id="page-memory">
+  <!-- State 1: memory exists -->
+  <div id="memory-card" class="memory-card" style="display:none">
+    <div class="memory-header">
+      <span class="memory-title">🧠 Project Memory</span>
+      <span class="memory-badge">✓ Active</span>
+    </div>
+    <div class="memory-row">
+      <span class="memory-label">Project</span>
+      <span id="memory-project-name" class="memory-value"></span>
+    </div>
+    <div class="memory-row">
+      <span class="memory-label">Analyzed</span>
+      <span id="memory-analyzed-at" class="memory-value"></span>
+    </div>
+    <div class="memory-row">
+      <span class="memory-label">Key files indexed</span>
+      <span id="memory-file-count" class="memory-value"></span>
+    </div>
+    <div class="memory-row" id="memory-stack-row" style="display:none">
+      <span class="memory-label">Tech stack</span>
+      <div class="memory-chips" id="memory-chips"></div>
+    </div>
+    <div class="memory-actions">
+      <button class="btn btn-secondary" id="btnReanalyze">🔄 Re-analyze</button>
+      <button class="btn btn-danger" id="btnClearMemory">🗑 Clear Memory</button>
+    </div>
+  </div>
+
+  <!-- State 2: no memory -->
+  <div id="memory-empty" class="memory-empty" style="display:none">
+    <div class="memory-empty-icon">🧠</div>
+    <div class="memory-empty-title">No project memory yet</div>
+    <div class="memory-empty-desc">Memory helps Orchestra skip re-analyzing your project on every run, saving tokens and time.</div>
+    <button class="btn btn-primary" id="btnAnalyzeNow">▶ Analyze Project Now</button>
+  </div>
+
+  <!-- State 3: analyzing -->
+  <div id="memory-analyzing" class="memory-analyzing" style="display:none">
+    <div class="memory-analyzing-header">⏳ Analyzing project…</div>
+    <div class="memory-spinner"></div>
+    <div class="memory-analyzing-sub">This only happens once — Orchestra is indexing your project files.</div>
+  </div>
+
+  <!-- State 4: error -->
+  <div id="memory-error-card" class="memory-error" style="display:none">
+    <div id="memory-error-msg" class="memory-error-msg"></div>
+    <button class="btn btn-secondary" id="btnMemoryRetry">↩ Try Again</button>
   </div>
 </div>
 
@@ -258,6 +334,7 @@ document.querySelectorAll('.tab').forEach(t => {
     t.classList.add('active');
     document.getElementById('page-'+t.dataset.page).classList.add('active');
     if (t.dataset.page === 'history') post('load_history');
+    if (t.dataset.page === 'memory')  post('get_memory_status');
     if (t.dataset.page === 'config') post('get_config');
   });
 });
@@ -268,6 +345,12 @@ document.getElementById('btnPlan').addEventListener('click', () => run(true));
 document.getElementById('btnAbort').addEventListener('click', () => abort());
 document.getElementById('btnRollback').addEventListener('click', () => rollback());
 document.getElementById('btnSaveAgent').addEventListener('click', saveAgent);
+document.getElementById('btnAnalyzeNow').addEventListener('click', () => { post('analyze_project'); setMemoryAnalyzing(); });
+document.getElementById('btnReanalyze').addEventListener('click', () => { post('analyze_project'); setMemoryAnalyzing(); });
+document.getElementById('btnClearMemory').addEventListener('click', () => {
+  if (confirm('Clear project memory? Orchestra will re-analyze next time.')) post('clear_memory');
+});
+document.getElementById('btnMemoryRetry').addEventListener('click', () => { post('analyze_project'); setMemoryAnalyzing(); });
 
 // ── Static model select listeners ──────────────────────
 ['orchestratorModel', 'agentModel', 'reviewModel'].forEach(s => {
@@ -448,6 +531,31 @@ window.addEventListener('message', ({ data: msg }) => {
     setBanner('status-banner', '⏹ Cancelled', 'warn');
   }
 
+  if (p === 'memory_status') {
+    if (msg.hasMemory) {
+      renderMemoryStatus(msg);
+    } else {
+      setMemoryState('empty');
+    }
+  }
+
+  if (p === 'memory_analyzing') {
+    setMemoryAnalyzing(msg.msg);
+  }
+
+  if (p === 'memory_ready') {
+    post('get_memory_status');
+  }
+
+  if (p === 'memory_cleared') {
+    if (msg.success) setMemoryState('empty');
+    else post('get_memory_status');
+  }
+
+  if (p === 'memory_error') {
+    setMemoryError(msg.error);
+  }
+
   if (p === 'config') {
     renderConfig(msg);
   }
@@ -612,6 +720,53 @@ function renderConfig(cfg) {
     row.appendChild(btn);
     togglesDiv.appendChild(row);
   }
+}
+
+// ── Memory tab ──────────────────────────────────────────
+function setMemoryState(state) {
+  document.getElementById('memory-card').style.display       = state === 'active'    ? '' : 'none';
+  document.getElementById('memory-empty').style.display      = state === 'empty'     ? '' : 'none';
+  document.getElementById('memory-analyzing').style.display  = state === 'analyzing' ? '' : 'none';
+  document.getElementById('memory-error-card').style.display = state === 'error'     ? '' : 'none';
+}
+
+function renderMemoryStatus(stats) {
+  setMemoryState('active');
+  const projectText = escHtml(stats.projectName || '—') +
+    (stats.projectType ? ' <span style="color:var(--vscode-descriptionForeground);font-weight:400">(' + escHtml(stats.projectType) + ')</span>' : '');
+  document.getElementById('memory-project-name').innerHTML = projectText;
+  document.getElementById('memory-file-count').textContent = stats.fileCount != null ? stats.fileCount : '—';
+  const analyzedAt = stats.analyzedAt ? new Date(stats.analyzedAt).toLocaleString(undefined, { dateStyle:'medium', timeStyle:'short' }) : '—';
+  document.getElementById('memory-analyzed-at').textContent = analyzedAt;
+  const chips = document.getElementById('memory-chips');
+  chips.innerHTML = '';
+  const stack = stats.techStack || [];
+  const shown = stack.slice(0, 5);
+  const extra = stack.length - shown.length;
+  for (const tech of shown) {
+    const chip = document.createElement('span');
+    chip.className = 'memory-chip';
+    chip.textContent = tech;
+    chips.appendChild(chip);
+  }
+  if (extra > 0) {
+    const chip = document.createElement('span');
+    chip.className = 'memory-chip';
+    chip.textContent = '+' + extra + ' more';
+    chips.appendChild(chip);
+  }
+  document.getElementById('memory-stack-row').style.display = stack.length ? '' : 'none';
+}
+
+function setMemoryAnalyzing(subMsg) {
+  setMemoryState('analyzing');
+  if (subMsg) document.querySelector('#memory-analyzing .memory-analyzing-sub').textContent = subMsg;
+}
+
+function setMemoryError(errMsg) {
+  setMemoryState('error');
+  const truncated = String(errMsg || 'Unknown error').slice(0, 100);
+  document.getElementById('memory-error-msg').textContent = '❌ Analysis failed: ' + truncated;
 }
 
 function timeSince(iso) {

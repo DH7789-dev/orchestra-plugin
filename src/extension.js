@@ -13,9 +13,11 @@ const { DashboardProvider }                  = require("./dashboard");
 const { rollback: gitRollback }              = require("./git-checkpoint");
 const { loadRuns, loadRun }                  = require("./run-store");
 const { EXAMPLE_CONFIG }                     = require("./agents");
+const { clearMemory, getMemoryStats, writeMemory } = require("./memory-store");
 
 let activeRunPromise  = null;
 let activeRunResolve  = null;
+let activeAnalysis    = null;   // promise of any in-flight standalone analysis (memory build)
 let lastCheckpoint    = null;
 let output            = null;
 let statusBar         = null;
@@ -42,13 +44,15 @@ function activate(context) {
   context.subscriptions.push(statusBar);
 
   // ── Commands ─────────────────────────────────────────
-  reg(context, "orchestra.run",           ()   => startRun(false));
-  reg(context, "orchestra.runWithPlan",   ()   => startRun(true));
-  reg(context, "orchestra.abort",         ()   => doAbort());
-  reg(context, "orchestra.rollback",      ()   => doRollback());
-  reg(context, "orchestra.configure",     ()   => doConfigure());
-  reg(context, "orchestra.showDashboard", ()   => doShowDashboard());
-  reg(context, "orchestra.showHistory",   ()   => doShowHistory());
+  reg(context, "orchestra.run",            ()  => startRun(false));
+  reg(context, "orchestra.runWithPlan",    ()  => startRun(true));
+  reg(context, "orchestra.abort",          ()  => doAbort());
+  reg(context, "orchestra.rollback",       ()  => doRollback());
+  reg(context, "orchestra.configure",      ()  => doConfigure());
+  reg(context, "orchestra.showDashboard",  ()  => doShowDashboard());
+  reg(context, "orchestra.showHistory",    ()  => doShowHistory());
+  reg(context, "orchestra.clearMemory",    ()  => doClearMemory());
+  reg(context, "orchestra.analyzeProject", ()  => doAnalyzeProject());
 }
 
 function reg(context, id, fn) {
@@ -317,6 +321,76 @@ async function handleDashboardMessage(msg) {
       break;
     }
 
+    case "get_memory_status": {
+      if (!workspaceRoot) { dashboard.post({ type: "memory_status", hasMemory: false }); break; }
+      const stats = getMemoryStats(workspaceRoot);
+      dashboard.post({ type: "memory_status", ...stats });
+      break;
+    }
+
+    case "clear_memory": {
+      if (!workspaceRoot) {
+        dashboard.post({ type: "memory_cleared", success: false, error: "No workspace folder open" });
+        break;
+      }
+      const success = clearMemory(workspaceRoot);
+      dashboard.post({ type: "memory_cleared", success });
+      // Refresh status from disk so we reflect the real state when clear failed
+      const stats = getMemoryStats(workspaceRoot);
+      dashboard.post({ type: "memory_status", ...stats });
+      break;
+    }
+
+    case "analyze_project": {
+      if (!workspaceRoot) {
+        dashboard.post({ type: "memory_error", error: "Open a folder first" });
+        break;
+      }
+      // Guard against double-clicks / racing run+analyze paths writing memory.json concurrently
+      if (activeAnalysis) {
+        dashboard.post({ type: "memory_error", error: "An analysis is already running." });
+        break;
+      }
+      const config = vscode.workspace.getConfiguration("orchestra");
+      let apiKey = config.get("cursorApiKey", "");
+      if (!apiKey) {
+        apiKey = await vscode.window.showInputBox({ prompt: "Cursor API Key", placeHolder: "crsr_…", password: true });
+        if (!apiKey) return;
+        await config.update("cursorApiKey", apiKey, vscode.ConfigurationTarget.Global);
+      }
+      const { sdk: sdk2, candidates: cands2 } = resolveSDK(workspaceRoot);
+      if (!sdk2) { await handleMissingSDK(workspaceRoot, cands2); break; }
+
+      dashboard.post({ type: "memory_analyzing", msg: "Re-analyzing project..." });
+      statusBar.text = "$(loading~spin) Orchestra: Analyzing…";
+
+      const { runAnalysis } = require("./analyzer-agent");
+      const agentModel = config.get("agentModel", "claude-sonnet-4-6");
+
+      activeAnalysis = runAnalysis({
+        sdk: sdk2,
+        apiKey,
+        workspaceRoot,
+        agentModel,
+        onLog: (msg) => { output.append(msg); dashboard.post({ type: "log", msg }); },
+      }).then(memData => {
+        // writeMemory can throw — surface it in the same path as analysis errors
+        writeMemory(workspaceRoot, memData);
+        const newStats = getMemoryStats(workspaceRoot);
+        dashboard.post({ type: "memory_status", ...newStats });
+        statusBar.text = "$(check) Orchestra: Memory ready!";
+        setTimeout(() => { statusBar.text = "$(play) Orchestra"; }, 4000);
+        vscode.window.showInformationMessage(`Orchestra: Project analyzed! ${memData.keyFiles?.length || 0} files indexed.`);
+      }).catch(err => {
+        dashboard.post({ type: "memory_error", error: err?.message || String(err) });
+        statusBar.text = "$(error) Orchestra: Analysis failed";
+        setTimeout(() => { statusBar.text = "$(play) Orchestra"; }, 4000);
+      }).finally(() => {
+        activeAnalysis = null;
+      });
+      break;
+    }
+
     case "update_model": {
       const cfg3 = vscode.workspace.getConfiguration("orchestra");
       const validSettings = ["orchestratorModel", "agentModel", "reviewModel"];
@@ -561,6 +635,35 @@ function handleRunError(err, sdk) {
   }
   statusBar.text = "$(error) Orchestra: Failed";
   setTimeout(() => { statusBar.text = "$(play) Orchestra"; }, 6000);
+}
+
+// ─────────────────────────────────────────────────────────
+async function doClearMemory() {
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!workspaceRoot) { vscode.window.showErrorMessage("Open a folder first."); return; }
+
+  const confirm = await vscode.window.showWarningMessage(
+    "Clear Orchestra project memory? The project will be re-analyzed on next run.",
+    { modal: true },
+    "Clear Memory",
+    "Cancel"
+  );
+  if (confirm !== "Clear Memory") return;
+
+  const success = clearMemory(workspaceRoot);
+  if (success) {
+    vscode.window.showInformationMessage("Orchestra: Project memory cleared.");
+  } else {
+    vscode.window.showErrorMessage("Orchestra: Could not clear project memory. Check file permissions.");
+  }
+  // Reflect the actual on-disk state, not assumed success
+  const stats = getMemoryStats(workspaceRoot);
+  dashboard?.post({ type: "memory_status", ...stats });
+}
+
+async function doAnalyzeProject() {
+  // Reuse the dashboard message handler so logic stays in one place
+  handleDashboardMessage({ command: "analyze_project" });
 }
 
 // ─────────────────────────────────────────────────────────

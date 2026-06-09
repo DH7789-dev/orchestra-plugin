@@ -15,6 +15,8 @@ const { createCheckpoint, finalizeCheckpoint } = require("./git-checkpoint");
 const { runAllGates } = require("./quality-gates");
 const { createTracker } = require("./cost-tracker");
 const { saveRun, updateRun, generateRunId } = require("./run-store");
+const { isMemoryValid, getMemoryContext, getMemoryStats, writeMemory } = require("./memory-store");
+const { runAnalysis } = require("./analyzer-agent");
 const path = require("path");
 const fs   = require("fs");
 
@@ -83,12 +85,46 @@ async function runOrchestration(opts) {
   log(`🔬  Quality   : ${doGates ? "enabled" : "disabled"}`);
   log("");
 
+  // Declared outside `try` so the `finally` block can always dispose it,
+  // regardless of which exit path (success / cancel / error) is taken.
+  let agent = null;
+
   try {
     // ── Phase 1: Git checkpoint ─────────────────────────
     if (doCheckpoint) {
       emit("phase", { phase: "checkpoint", msg: "Creating git checkpoint..." });
       run.checkpoint = createCheckpoint(workspaceRoot, runId, log);
       if (run.checkpoint) saveRun(workspaceRoot, run);
+    }
+
+    // ── Phase 1.5: Memory — auto-analyze if empty ──────
+    emit("phase", { phase: "memory", msg: "Checking project memory..." });
+
+    let memoryContext = "";
+    if (!isMemoryValid(workspaceRoot)) {
+      log(`🧠  No project memory found. Running analyzer agent...\n`);
+      emit("memory_analyzing", { msg: "Analyzing project for first time..." });
+      try {
+        const memData = await runAnalysis({
+          sdk,
+          apiKey,
+          workspaceRoot,
+          agentModel,
+          onLog: log,
+        });
+        writeMemory(workspaceRoot, memData);
+        log(`✅  Project memory created (${memData.keyFiles?.length || 0} key files indexed)\n`);
+        emit("memory_ready", { stats: { projectName: memData.projectName, fileCount: memData.keyFiles?.length || 0 } });
+        memoryContext = getMemoryContext(workspaceRoot);
+      } catch (memErr) {
+        log(`⚠️  Memory analysis failed (${memErr.message}) — continuing without memory\n`);
+        emit("memory_skipped", { error: memErr.message });
+      }
+    } else {
+      memoryContext = getMemoryContext(workspaceRoot);
+      const stats = getMemoryStats(workspaceRoot);
+      log(`🧠  Project memory loaded (${stats.projectName || "project"}, analyzed ${stats.analyzedAt ? new Date(stats.analyzedAt).toLocaleDateString() : "?"}, ${stats.fileCount || 0} files)\n`);
+      emit("memory_ready", { stats });
     }
 
     // ── Phase 2: Build agent definitions ───────────────
@@ -106,7 +142,7 @@ async function runOrchestration(opts) {
     log(`⏳  Creating orchestrator + ${Object.keys(agentDefs).length} subagents...`);
     tracker.startAgent("orchestrator", orchModel);
 
-    const agent = await Agent.create({
+    agent = await Agent.create({
       apiKey,
       name: "Orchestra",
       model: { id: orchModel },
@@ -122,7 +158,7 @@ async function runOrchestration(opts) {
       emit("phase", { phase: "planning", msg: "Generating execution plan..." });
       log(`⏳  Requesting execution plan...`);
 
-      const planPrompt = `${ORCHESTRATOR_SYSTEM}
+      const planPrompt = `${memoryContext ? memoryContext + "\n\n" : ""}${ORCHESTRATOR_SYSTEM}
 
 FEATURE REQUEST:
 ${featureRequest}
@@ -223,7 +259,7 @@ Output ONLY the JSON plan first. Do not begin executing. Wait.`;
     // ── Phase 4: Execute agents ─────────────────────────
     emit("phase", { phase: "executing", msg: "Executing agents..." });
 
-    const execPrompt = `${ORCHESTRATOR_SYSTEM}
+    const execPrompt = `${memoryContext ? memoryContext + "\n\n" : ""}${ORCHESTRATOR_SYSTEM}
 
 FEATURE REQUEST:
 ${featureRequest}
@@ -346,8 +382,6 @@ Track carefully:
 
     emit("run_complete", { run });
 
-    try { await agent[Symbol.asyncDispose](); } catch (_) {}
-
     return { run };
 
   } catch (err) {
@@ -357,6 +391,12 @@ Track carefully:
     saveRun(workspaceRoot, run);
     emit("run_failed", { run, error: err.message });
     throw err;
+  } finally {
+    // Always dispose the orchestrator agent — even on cancel or error —
+    // to avoid leaking SDK resources / open handles.
+    if (agent) {
+      try { await agent[Symbol.asyncDispose](); } catch (_) {}
+    }
   }
 }
 

@@ -17,6 +17,8 @@
     "onCommand:orchestra.abort",
     "onCommand:orchestra.showDashboard",
     "onCommand:orchestra.showHistory",
+    "onCommand:orchestra.clearMemory",
+    "onCommand:orchestra.analyzeProject",
     "onView:orchestra.dashboard"
   ],
   "main": "./src/extension.js",
@@ -27,8 +29,10 @@
       { "command": "orchestra.rollback",      "title": "Orchestra: Rollback Last Run",      "icon": "$(discard)" },
       { "command": "orchestra.abort",         "title": "Orchestra: Abort Current Run",      "icon": "$(stop)" },
       { "command": "orchestra.configure",     "title": "Orchestra: Configure",              "icon": "$(gear)" },
-      { "command": "orchestra.showDashboard", "title": "Orchestra: Show Dashboard" },
-      { "command": "orchestra.showHistory",   "title": "Orchestra: Show Run History" }
+      { "command": "orchestra.showDashboard",  "title": "Orchestra: Show Dashboard" },
+      { "command": "orchestra.showHistory",    "title": "Orchestra: Show Run History" },
+      { "command": "orchestra.clearMemory",    "title": "Orchestra: Clear Project Memory" },
+      { "command": "orchestra.analyzeProject", "title": "Orchestra: Analyze Project (Build Memory)" }
     ],
     "keybindings": [
       { "command": "orchestra.run",         "key": "ctrl+shift+o", "mac": "cmd+shift+o" },
