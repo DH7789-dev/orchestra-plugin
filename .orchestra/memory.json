@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "analyzedAt": "2026-06-09T09:52:00.000Z",
+  "projectName": "cursor-orchestra",
+  "projectType": "vscode-extension",
+  "language": "javascript",
+  "framework": "vscode-extension",
+  "entryPoints": [
+    "src/extension.js"
+  ],
+  "techStack": [
+    "Node.js",
+    "VS Code Extension API",
+    "@cursor/sdk",
+    "Mocha",
+    "Chai",
+    "@vscode/vsce",
+    "CommonJS modules",
+    "Git (child_process)"
+  ],
+  "keyFiles": [
+    {
+      "path": "src/extension.js",
+      "purpose": "VS Code extension entry point — registers all commands, dashboard, status bar, and handles the full command/lifecycle orchestration"
+    },
+    {
+      "path": "src/runner.js",
+      "purpose": "Core orchestration engine — 6-phase run lifecycle: git checkpoint → memory check → plan gate → agent execution → quality gates → finalize"
+    },
+    {
+      "path": "src/agents.js",
+      "purpose": "Agent definitions — system prompts, metadata (emoji/color/name), custom config loader, and the orchestrator system prompt"
+    },
+    {
+      "path": "src/analyzer-agent.js",
+      "purpose": "Standalone Cursor SDK agent that scans the workspace and produces a structured memory.json index for the project"
+    },
+    {
+      "path": "src/memory-store.js",
+      "purpose": "Project memory persistence layer — reads/writes .orchestra/memory.json, exposes context string for LLM prompt injection"
+    },
+    {
+      "path": "src/dashboard.js",
+      "purpose": "VS Code WebviewViewProvider — inline HTML/CSS/JS dashboard with Run, Status, History, Settings, and Memory tabs"
+    },
+    {
+      "path": "src/git-checkpoint.js",
+      "purpose": "Git safety layer — creates WIP commits before each run, finalizes commits after, and performs hard-reset rollback"
+    },
+    {
+      "path": "src/quality-gates.js",
+      "purpose": "Post-agent quality gating — detects and runs npm test/lint/build/type-check scripts in the user's workspace"
+    },
+    {
+      "path": "src/cost-tracker.js",
+      "purpose": "Per-agent token and cost accounting with model-specific pricing; produces formatted summaries for the dashboard"
+    },
+    {
+      "path": "src/run-store.js",
+      "purpose": "Run history persistence — saves/loads/prunes per-run JSON files under .orchestra/runs/"
+    },
+    {
+      "path": "src/sdk-resolver.js",
+      "purpose": "Locates @cursor/sdk in the project's node_modules, global npm, or ~/.orchestra fallback location"
+    },
+    {
+      "path": "package.json",
+      "purpose": "Extension manifest — activation events, command palette entries, keybindings, sidebar view, and all VS Code configuration contribution points"
+    },
+    {
+      "path": "test/runner.js",
+      "purpose": "Mocha test runner entry point"
+    },
+    {
+      "path": "test/suite/agents.test.js",
+      "purpose": "Unit tests for agent prompt loading and custom config merging"
+    },
+    {
+      "path": "test/suite/memory-store.test.js",
+      "purpose": "Unit tests for memory read/write/clear/validation logic"
+    }
+  ],
+  "architecture": "Single-process VS Code extension using CommonJS modules; the extension host registers commands and a WebviewViewProvider, delegates to runner.js which executes a sequential 6-phase pipeline (checkpoint → memory → plan → agents → gates → persist), each phase handled by a dedicated module. All inter-module communication is synchronous require(); agent streaming is handled via the @cursor/sdk Agent.create / agent.send / run.stream() async iterator API.",
+  "dependencies": {
+    "main": [
+      "@cursor/sdk (peer/runtime, resolved dynamically)"
+    ],
+    "dev": [
+      "@vscode/vsce@^3.0.0",
+      "@vscode/test-electron@^2.3.0",
+      "mocha@^10.4.0",
+      "chai@^5.1.0"
+    ]
+  },
+  "patterns": [
+    "Event-driven dashboard communication via postMessage (extension ↔ webview)",
+    "Phase-based pipeline with structured event emission (onEvent callback)",
+    "Module-level state reset pattern (custom agent config reloaded on every run)",
+    "Allowlist validation for agent names and model IDs (prototype-pollution prevention)",
+    "Graceful degradation (memory failure, missing SDK, non-git repo — all non-fatal)",
+    "Symbol.asyncDispose for SDK agent cleanup",
+    "JSON-in-markdown extraction with multiple fallback strategies"
+  ],
+  "conventions": [
+    "All source files are CommonJS (require/module.exports), no TypeScript or transpilation",
+    "File-level JSDoc block at top of each module describing its purpose",
+    "Logger callbacks (log, onLog, onEvent) passed as parameters rather than global singletons",
+    "Run IDs use format YYYYMMDDHHMMSS-XXXX (date prefix + 4-char random)",
+    "Workspace config stored under .orchestra/ directory (config.json, memory.json, runs/)",
+    "No npm runtime dependencies — only devDependencies; @cursor/sdk resolved dynamically at runtime",
+    "VS Code settings use 'orchestra.' prefix namespace"
+  ],
+  "testSetup": "Mocha + Chai; tests live in test/suite/*.test.js; runner at test/runner.js; executed via 'npm test' (node test/runner.js); 20+ unit tests covering git-checkpoint, quality-gates, run-store, cost-tracker, agents, memory-store, dashboard, analyzer-agent",
+  "buildSystem": "vsce (Visual Studio Code Extension packager); 'npm run package' runs 'vsce package --no-dependencies --no-yarn --no-git-tag-version --allow-missing-repository' to produce a .vsix file; no bundler (webpack/esbuild) — source JS is shipped as-is",
+  "linting": "null",
+  "summary": "Orchestra is a production-grade VS Code/Cursor extension (v3.0.0) that orchestrates multiple AI agents via the @cursor/sdk to implement full-stack features from a single natural-language prompt. It provides a 6-phase run lifecycle including automatic git checkpoints, an approval-gated execution plan, parallel specialist agents (backend, frontend, test, manager), post-agent quality gates, real-time cost tracking, and a persistent project memory index. The extension ships as a self-contained .vsix with no bundler; all modules are plain CommonJS and the @cursor/sdk is resolved dynamically from the user's workspace or global npm at runtime. A new developer should start with src/extension.js to understand command registration and then src/runner.js to follow the end-to-end orchestration pipeline."
+}
